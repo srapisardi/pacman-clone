@@ -1,6 +1,7 @@
 import random
 import sys
 from collections import deque
+from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import pygame
@@ -24,17 +25,23 @@ MAZE = [
     "####################",
 ]
 
-CELL_SIZE = 32
+CELL_SIZE = 64
 WIDTH = len(MAZE[0]) * CELL_SIZE
 HEIGHT = len(MAZE) * CELL_SIZE
-HUD_HEIGHT = 40
+HUD_HEIGHT = 80
 FPS = 60
 
-PLAYER_SIZE = 26
-GHOST_SIZE = 26
+PLAYER_SIZE = 52
+GHOST_SIZE = 52
 STARTING_LIVES = 3
 TILE_CENTER_OFFSET = CELL_SIZE // 2
 CLYDE_SCATTER_DISTANCE = 8
+PELLET_SIZE = 24
+PELLET_IMAGE_PATH = Path(__file__).parent / "assets" / "chowda_pellet.png"
+PLAYER_IMAGE_PATH = Path(__file__).parent / "assets" / "corey_player.png"
+KENNY_GHOST_IMAGE_PATH = Path(__file__).parent / "assets" / "kenny_ghost.png"
+CARA_GHOST_IMAGE_PATH = Path(__file__).parent / "assets" / "cara_ghost.png"
+SAL_GHOST_IMAGE_PATH = Path(__file__).parent / "assets" / "sal_ghost.png"
 
 DIRECTIONS = [(1, 0), (-1, 0), (0, 1), (0, -1)]
 
@@ -46,18 +53,23 @@ class GameState:
         self.score = 0
         self.lives = STARTING_LIVES
         self.level = build_level()
-        self.player_speed = 3
-        self.ghost_speed = 2
+        self.player_speed = 5
+        self.ghost_speed = 4
         self.reset_positions()
 
     def reset_positions(self) -> None:
-        self.player_pos = tile_center(1, 1)
+        # (12, 7) is the walkable floor tile closest to the maze's true center
+        # (row 7 of 15 is the exact middle row; the middle column is blocked
+        # by the ghost house, so this is the nearest open tile beside it).
+        self.player_pos = tile_center(12, 7)
+        self.player_facing = 1
         self.ghosts = [
             {
                 "pos": tile_center(9, 5),
                 "dir": (0, -1),
                 "color": (255, 0, 0),
                 "role": "chase",
+                "facing": 1,
             },
             {
                 "pos": tile_center(10, 5),
@@ -65,6 +77,7 @@ class GameState:
                 "color": (0, 255, 255),
                 "role": "ambush",
                 "ambush_offset": (-4, -4),
+                "facing": 1,
             },
             {
                 "pos": tile_center(9, 8),
@@ -72,6 +85,7 @@ class GameState:
                 "color": (255, 165, 0),
                 "role": "clyde",
                 "scatter_target": (1, 13),
+                "facing": 1,
             },
         ]
 
@@ -333,6 +347,8 @@ def move_ghost(
             ghost["dir"] = chosen[1]
 
     dx, dy = ghost["dir"]
+    if dx != 0:
+        ghost["facing"] = 1 if dx > 0 else -1
     new_pos = (x + dx * speed, y + dy * speed)
 
     if can_move_to(level, new_pos, GHOST_SIZE):
@@ -354,18 +370,19 @@ def draw_wall(surface: pygame.Surface, col: int, row: int) -> None:
     pygame.draw.rect(surface, (33, 33, 222), rect)
 
 
-def draw_player(surface: pygame.Surface, pos: Tuple[int, int]) -> None:
-    pygame.draw.circle(surface, (255, 255, 0), pos, 13)
-    pygame.draw.circle(surface, (0, 0, 0), (pos[0] + 3, pos[1] - 3), 2)
+def draw_player(surface: pygame.Surface, pos: Tuple[int, int], image: pygame.Surface) -> None:
+    rect = image.get_rect(center=pos)
+    surface.blit(image, rect)
 
 
-def draw_ghost(surface: pygame.Surface, pos: Tuple[int, int], color: Tuple[int, int, int]) -> None:
-    pygame.draw.circle(surface, color, pos, 13)
-    pygame.draw.rect(surface, color, (pos[0] - 13, pos[1], 26, 10))
+def draw_ghost(surface: pygame.Surface, pos: Tuple[int, int], image: pygame.Surface) -> None:
+    rect = image.get_rect(center=pos)
+    surface.blit(image, rect)
 
 
-def draw_pellet(surface: pygame.Surface, pos: Tuple[int, int]) -> None:
-    pygame.draw.circle(surface, (255, 200, 100), pos, 4)
+def draw_pellet(surface: pygame.Surface, pos: Tuple[int, int], image: pygame.Surface) -> None:
+    rect = image.get_rect(center=pos)
+    surface.blit(image, rect)
 
 
 def draw_hud(surface: pygame.Surface, font: pygame.font.Font, score: int, lives: int) -> None:
@@ -384,8 +401,18 @@ def main() -> None:
     pygame.display.set_caption("Corey Chowda Pacman Clone")
     screen = pygame.display.set_mode((WIDTH, HEIGHT + HUD_HEIGHT))
     clock = pygame.time.Clock()
-    hud_font = pygame.font.SysFont(None, 28)
-    game_over_font = pygame.font.SysFont(None, 72)
+    hud_font = pygame.font.SysFont(None, 56)
+    game_over_font = pygame.font.SysFont(None, 144)
+    pellet_image = pygame.image.load(str(PELLET_IMAGE_PATH)).convert_alpha()
+    player_image_right = pygame.image.load(str(PLAYER_IMAGE_PATH)).convert_alpha()
+    player_image_left = pygame.transform.flip(player_image_right, True, False)
+
+    ghost_images = []
+    for path in (KENNY_GHOST_IMAGE_PATH, CARA_GHOST_IMAGE_PATH, SAL_GHOST_IMAGE_PATH):
+        image_right = pygame.image.load(str(path)).convert_alpha()
+        image_left = pygame.transform.flip(image_right, True, False)
+        ghost_images.append((image_right, image_left))
+
     state = GameState()
 
     while state.running:
@@ -395,6 +422,10 @@ def main() -> None:
 
         if not state.game_over:
             keys = pygame.key.get_pressed()
+            if keys[pygame.K_a]:
+                state.player_facing = -1
+            elif keys[pygame.K_d]:
+                state.player_facing = 1
             state.player_pos = move_player(
                 state.level, state.player_pos, PLAYER_SIZE, state.player_speed, keys
             )
@@ -407,7 +438,7 @@ def main() -> None:
                 move_ghost(state.level, ghost, state.ghost_speed, player_tile, other_positions)
 
             for pellet in list(state.level["pellets"]):
-                if collides(state.player_pos, pellet, PLAYER_SIZE, 8):
+                if collides(state.player_pos, pellet, PLAYER_SIZE, PELLET_SIZE):
                     state.level = consume_pellet(state.level, pellet)
                     state.score += 10
 
@@ -426,11 +457,14 @@ def main() -> None:
                     draw_wall(screen, col_index, row_index)
 
         for pellet in state.level["pellets"]:
-            draw_pellet(screen, pellet)
+            draw_pellet(screen, pellet, pellet_image)
 
-        draw_player(screen, state.player_pos)
-        for ghost in state.ghosts:
-            draw_ghost(screen, ghost["pos"], ghost["color"])
+        player_image = player_image_right if state.player_facing >= 0 else player_image_left
+        draw_player(screen, state.player_pos, player_image)
+        for i, ghost in enumerate(state.ghosts):
+            image_right, image_left = ghost_images[i]
+            ghost_image = image_right if ghost["facing"] >= 0 else image_left
+            draw_ghost(screen, ghost["pos"], ghost_image)
 
         draw_hud(screen, hud_font, state.score, state.lives)
         if state.game_over:
