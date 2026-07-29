@@ -44,7 +44,20 @@ the final artwork. Core Pac-Man mechanics are implemented and tested.
 
 ### Running the game
 
+**Easiest way:** download/clone the repo, then run the launcher for your OS —
+it installs dependencies automatically and starts the game.
+
+- **Windows:** double-click `run.bat`
+- **macOS/Linux:** run `./run.sh` in a terminal (or double-click it if your
+  file manager runs `.sh` scripts)
+
+Both require [Python 3](https://www.python.org/downloads/) to already be
+installed and on your PATH.
+
+**Manual way**, if you'd rather manage dependencies yourself:
+
 ```bash
+pip install -r requirements.txt
 python main.py
 ```
 

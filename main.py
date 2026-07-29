@@ -1,8 +1,15 @@
+import os
 import random
 import sys
 from collections import deque
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
+
+# SDL's auto-detected audio driver on Linux (e.g. WSL/WSLg) is often the
+# broken OSS "dsp" driver, which fails even though PulseAudio is available.
+# Prefer PulseAudio by default unless the user already set a driver.
+if sys.platform.startswith("linux"):
+    os.environ.setdefault("SDL_AUDIODRIVER", "pulseaudio")
 
 import pygame
 
@@ -25,23 +32,25 @@ MAZE = [
     "####################",
 ]
 
-CELL_SIZE = 64
+CELL_SIZE = 88
 WIDTH = len(MAZE[0]) * CELL_SIZE
 HEIGHT = len(MAZE) * CELL_SIZE
 HUD_HEIGHT = 80
 FPS = 60
 
-PLAYER_SIZE = 52
-GHOST_SIZE = 52
+PLAYER_SIZE = 48
+GHOST_SIZE = 48
 STARTING_LIVES = 3
 TILE_CENTER_OFFSET = CELL_SIZE // 2
 CLYDE_SCATTER_DISTANCE = 8
-PELLET_SIZE = 24
+PELLET_SIZE = 40
 PELLET_IMAGE_PATH = Path(__file__).parent / "assets" / "chowda_pellet.png"
 PLAYER_IMAGE_PATH = Path(__file__).parent / "assets" / "corey_player.png"
 KENNY_GHOST_IMAGE_PATH = Path(__file__).parent / "assets" / "kenny_ghost.png"
 CARA_GHOST_IMAGE_PATH = Path(__file__).parent / "assets" / "cara_ghost.png"
 SAL_GHOST_IMAGE_PATH = Path(__file__).parent / "assets" / "sal_ghost.png"
+EATING_SOUND_PATH = Path(__file__).parent / "assets" / "Eating_noise.wav"
+DEATH_SOUND_PATH = Path(__file__).parent / "assets" / "Death_noise.wav"
 
 DIRECTIONS = [(1, 0), (-1, 0), (0, 1), (0, -1)]
 
@@ -50,6 +59,7 @@ class GameState:
     def __init__(self) -> None:
         self.running = True
         self.game_over = False
+        self.won = False
         self.score = 0
         self.lives = STARTING_LIVES
         self.level = build_level()
@@ -396,16 +406,47 @@ def draw_game_over(surface: pygame.Surface, font: pygame.font.Font) -> None:
     surface.blit(text, rect)
 
 
+def draw_win(surface: pygame.Surface, font: pygame.font.Font) -> None:
+    text = font.render("You ate all the chowda!", True, (255, 255, 0))
+    rect = text.get_rect(center=(WIDTH // 2, HEIGHT // 2))
+    surface.blit(text, rect)
+
+
+def load_sound(path: Path) -> Optional[pygame.mixer.Sound]:
+    """Load a sound if the mixer is available; return None if audio can't be used."""
+    if not pygame.mixer.get_init():
+        return None
+    try:
+        return pygame.mixer.Sound(str(path))
+    except pygame.error as e:
+        print(f"Warning: couldn't load sound {path}: {e}")
+        return None
+
+
+def play_sound(sound: Optional[pygame.mixer.Sound]) -> None:
+    if sound is not None:
+        sound.play()
+
+
 def main() -> None:
     pygame.init()
+    try:
+        pygame.mixer.init()
+    except pygame.error as e:
+        print(f"Warning: audio device unavailable, running without sound: {e}")
     pygame.display.set_caption("Corey Chowda Pacman Clone")
     screen = pygame.display.set_mode((WIDTH, HEIGHT + HUD_HEIGHT))
     clock = pygame.time.Clock()
     hud_font = pygame.font.SysFont(None, 56)
     game_over_font = pygame.font.SysFont(None, 144)
     pellet_image = pygame.image.load(str(PELLET_IMAGE_PATH)).convert_alpha()
+    pellet_image = pygame.transform.smoothscale(
+        pellet_image, (PELLET_SIZE, PELLET_SIZE)
+    )
     player_image_right = pygame.image.load(str(PLAYER_IMAGE_PATH)).convert_alpha()
     player_image_left = pygame.transform.flip(player_image_right, True, False)
+    eating_sound = load_sound(EATING_SOUND_PATH)
+    death_sound = load_sound(DEATH_SOUND_PATH)
 
     ghost_images = []
     for path in (KENNY_GHOST_IMAGE_PATH, CARA_GHOST_IMAGE_PATH, SAL_GHOST_IMAGE_PATH):
@@ -420,7 +461,7 @@ def main() -> None:
             if event.type == pygame.QUIT:
                 state.running = False
 
-        if not state.game_over:
+        if not state.game_over and not state.won:
             keys = pygame.key.get_pressed()
             if keys[pygame.K_a]:
                 state.player_facing = -1
@@ -441,8 +482,14 @@ def main() -> None:
                 if collides(state.player_pos, pellet, PLAYER_SIZE, PELLET_SIZE):
                     state.level = consume_pellet(state.level, pellet)
                     state.score += 10
+                    play_sound(eating_sound)
+
+            if state.level["remaining_pellets"] == 0:
+                state.won = True
 
             if player_hits_ghost(state.player_pos, state.ghosts):
+                pygame.mixer.stop()
+                play_sound(death_sound)
                 state.lives -= 1
                 if state.lives <= 0:
                     state.game_over = True
@@ -469,6 +516,8 @@ def main() -> None:
         draw_hud(screen, hud_font, state.score, state.lives)
         if state.game_over:
             draw_game_over(screen, game_over_font)
+        elif state.won:
+            draw_win(screen, game_over_font)
 
         pygame.display.flip()
         clock.tick(FPS)
