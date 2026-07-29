@@ -1,6 +1,14 @@
 @echo off
-REM Double-click this file to install dependencies (first run only) and start the game.
+REM Double-click this file to start the game.
+REM Uses the bundled CoreyChowda.exe if present (no Python required); falls
+REM back to running from source with Python otherwise.
 setlocal
+
+if exist "%~dp0dist\CoreyChowda.exe" (
+    echo Starting Corey Chowda...
+    "%~dp0dist\CoreyChowda.exe"
+    exit /b 0
+)
 
 where python >nul 2>nul
 if %errorlevel% neq 0 (

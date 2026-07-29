@@ -44,15 +44,11 @@ the final artwork. Core Pac-Man mechanics are implemented and tested.
 
 ### Running the game
 
-**Easiest way:** download/clone the repo, then run the launcher for your OS —
-it installs dependencies automatically and starts the game.
+**With Python installed:**
 
-- **Windows:** double-click `run.bat`
-- **macOS/Linux:** run `./run.sh` in a terminal (or double-click it if your
-  file manager runs `.sh` scripts)
-
-Both require [Python 3](https://www.python.org/downloads/) to already be
-installed and on your PATH.
+- **Windows:** double-click `run.bat` (uses `dist/CoreyChowda.exe` if you've
+  built it locally — see below — otherwise runs from source)
+- **macOS/Linux:** run `./run.sh` in a terminal
 
 **Manual way**, if you'd rather manage dependencies yourself:
 
@@ -60,6 +56,24 @@ installed and on your PATH.
 pip install -r requirements.txt
 python main.py
 ```
+
+#### Building a standalone .exe (no Python required to run it)
+
+A prebuilt `.exe` isn't checked into this repo — GitHub's push scanning
+rejects raw PyInstaller binaries pushed via git (a common false-positive for
+this kind of self-extracting build). To get a no-Python-required build,
+make it yourself:
+
+```bash
+pip install pyinstaller
+pyinstaller --onefile --name CoreyChowda --add-data "assets;assets" main.py
+```
+
+This produces `dist/CoreyChowda.exe`, which `run.bat` will pick up
+automatically. If you want to share a build with others, upload it as an
+asset on a [GitHub Release](https://docs.github.com/en/repositories/releasing-projects-on-github)
+rather than committing it — releases aren't subject to the same push
+scanning as regular commits.
 
 ### Running the tests
 
@@ -76,7 +90,10 @@ python -m pytest -q tests/test_game_logic.py
 ```
 corey-chowda/
 ├── main.py                    # Game loop, maze, movement, ghost AI, rendering
-├── assets/                    # Reserved for sprite/image assets (currently empty)
+├── assets/                    # Sprite, image, and sound assets
+├── dist/                      # Local PyInstaller output (gitignored, not committed)
+├── run.bat                    # Windows launcher (uses dist/CoreyChowda.exe if present)
+├── run.sh                     # macOS/Linux launcher (runs from source)
 ├── tests/
 │   └── test_game_logic.py     # Unit tests for core game logic
 ├── requirements.txt
